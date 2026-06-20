@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>send-it — sports performance tools</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0d1117; color: #e6edf3; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 40px 24px; }
+  h1 { font-size: 32px; font-weight: 700; margin-bottom: 8px; }
+  h1 span { color: #00c896; }
+  .sub { color: #8b949e; margin-bottom: 48px; font-size: 15px; }
+  .tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; width: 100%; max-width: 800px; }
+  .tool { background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 24px; text-decoration: none; color: inherit; transition: border-color .15s, background .15s; }
+  .tool:hover { border-color: #00c896; background: #0d1117; }
+  .tool-icon { font-size: 28px; margin-bottom: 12px; }
+  .tool-name { font-size: 18px; font-weight: 600; color: #00c896; margin-bottom: 6px; }
+  .tool-desc { font-size: 13px; color: #8b949e; line-height: 1.55; }
+  footer { margin-top: 48px; font-size: 12px; color: #484f58; }
+  footer a { color: #8b949e; text-decoration: none; }
+  footer a:hover { color: #e6edf3; }
+</style>
+</head>
+<body>
+  <h1>send<span>-it</span></h1>
+  <p class="sub">Open-source sports performance tools. Local-first. No account. No tracking.</p>
+  <div class="tools">
+    <a href="./pacemaxing/" class="tool">
+      <div class="tool-icon">🚣</div>
+      <div class="tool-name">PaceMaxing</div>
+      <div class="tool-desc">Rowing interval analyzer. Drop a FIT file, get pace · DPS · HR broken down by quarter and sprint segment across every piece.</div>
+    </a>
+  </div>
+  <footer>
+    <a href="https://github.com/GoeppertVB/send-it">GitHub</a> &nbsp;·&nbsp;
+    MIT License &nbsp;·&nbsp;
+    Built on the Schuylkill
+  </footer>
+</body>
+</html>

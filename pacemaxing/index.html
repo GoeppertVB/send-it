@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rowing Interval Analyzer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  /* ── Design tokens ── */
+  :root {
+    --bg:        #0d1117;
+    --surface:   #161b22;
+    --surface2:  #1c2330;
+    --border:    #30363d;
+    --accent:    #00c896;    /* Schuylkill green */
+    --accent2:   #1f6feb;
+    --warn:      #e3a135;
+    --danger:    #f85149;
+    --text:      #e6edf3;
+    --text2:     #8b949e;
+    --text3:     #484f58;
+    --mono:      'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    --sans:      'Inter', system-ui, -apple-system, sans-serif;
+    --radius:    6px;
+    --radius-lg: 10px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+
+  /* ── Header ── */
+  header {
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .logo {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  header h1 { font-size: 16px; font-weight: 600; }
+  header p  { font-size: 12px; color: var(--text2); }
+
+  /* ── Layout ── */
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
+
+  /* ── Setup panel ── */
+  .setup {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    margin-bottom: 24px;
+  }
+  .setup h2 { font-size: 13px; font-weight: 600; color: var(--text2); letter-spacing: .08em; text-transform: uppercase; margin-bottom: 16px; }
+
+  .fields {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .field label { display: block; font-size: 12px; color: var(--text2); margin-bottom: 5px; font-weight: 500; }
+  .field input, .field select {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    color: var(--text);
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: var(--sans);
+    transition: border-color .15s;
+  }
+  .field input:focus, .field select:focus {
+    outline: none;
+    border-color: var(--accent);
+  }
+
+  .drop-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color .2s, background .2s;
+    margin-bottom: 16px;
+  }
+  .drop-zone:hover, .drop-zone.drag-over {
+    border-color: var(--accent);
+    background: rgba(0,200,150,.05);
+  }
+  .drop-zone .icon { font-size: 28px; margin-bottom: 8px; }
+  .drop-zone p { color: var(--text2); font-size: 13px; }
+  .drop-zone strong { color: var(--accent); }
+
+  .btn {
+    background: var(--accent);
+    color: #000;
+    border: none;
+    border-radius: var(--radius);
+    padding: 9px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .35; cursor: not-allowed; }
+  .btn-secondary {
+    background: var(--surface2);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  /* ── Status ── */
+  .status {
+    display: none;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .status.info    { background: rgba(31,111,235,.15); border: 1px solid rgba(31,111,235,.3); color: #79c0ff; }
+  .status.success { background: rgba(0,200,150,.12); border: 1px solid rgba(0,200,150,.3); color: var(--accent); }
+  .status.error   { background: rgba(248,81,73,.12); border: 1px solid rgba(248,81,73,.3); color: #ff7b72; }
+
+  /* ── Results ── */
+  #results { display: none; }
+
+  .session-header {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+  }
+  .stat-card .label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .stat-card .value { font-size: 22px; font-weight: 600; font-family: var(--mono); color: var(--accent); }
+  .stat-card .sub   { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+  /* ── Piece summary row ── */
+  .piece-cards {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .piece-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .piece-header {
+    display: grid;
+    grid-template-columns: 60px 1fr repeat(5, auto);
+    gap: 12px;
+    align-items: center;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+  }
+  .piece-header:hover { background: var(--surface2); }
+  .piece-num { font-size: 12px; font-weight: 700; color: var(--text2); }
+  .piece-pace { font-size: 20px; font-weight: 600; font-family: var(--mono); }
+  .piece-meta { font-size: 11px; color: var(--text2); text-align: right; white-space: nowrap; }
+  .piece-chevron { color: var(--text3); font-size: 12px; transition: transform .2s; }
+  .piece-chevron.open { transform: rotate(180deg); }
+
+  .piece-detail { display: none; }
+  .piece-detail.open { display: block; }
+
+  /* ── Quarter table ── */
+  .qtable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+  }
+  .qtable th {
+    text-align: left;
+    padding: 7px 16px;
+    color: var(--text3);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--border);
+  }
+  .qtable th.r { text-align: right; }
+  .qtable td {
+    padding: 7px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .qtable td.r { text-align: right; font-family: var(--mono); }
+  .qtable tr.sprint { background: var(--surface2); }
+  .qtable tr:last-child td { border-bottom: none; }
+  .qtable tr.first30 td, .qtable tr.last30 td { color: var(--accent); }
+  .seg-label { display: inline-block; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 4px; }
+
+  /* ── Chart area ── */
+  .charts-section { margin-bottom: 24px; }
+  .charts-section h3 { font-size: 12px; color: var(--text2); letter-spacing: .06em; text-transform: uppercase; margin-bottom: 12px; }
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 700px) { .chart-grid { grid-template-columns: 1fr; } }
+  .chart-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+  }
+  .chart-box .chart-title { font-size: 11px; color: var(--text2); margin-bottom: 10px; }
+  .chart-box .chart-wrap { position: relative; height: 140px; }
+  .chart-box canvas { display: block; }
+
+  /* ── Rest badge ── */
+  .rest-row {
+    padding: 5px 16px;
+    font-size: 11px;
+    color: var(--text3);
+    border-left: 2px solid var(--border);
+    margin: 4px 0 4px 24px;
+  }
+
+  /* ── Legend ── */
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--text2); }
+  .legend-dot { width: 8px; height: 8px; border-radius: 50%; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🚣</div>
+  <div>
+    <h1>Rowing Interval Analyzer</h1>
+    <p>FIT file → piece breakdown · quarters · first/last 30 strokes · rest intervals</p>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- Setup -->
+  <div class="setup">
+    <h2>Session Setup</h2>
+
+    <div class="drop-zone" id="dropZone">
+      <div class="icon">📁</div>
+      <p><strong>Drop your FIT file here</strong> or click to browse</p>
+      <p style="margin-top:4px;font-size:11px;">Coros · Garmin · SpeedCoach FIT files supported</p>
+      <p style="margin-top:6px;font-size:11px;color:#e3a135;">⚓ Intervals are measured backwards from the end of each piece — set length to match your actual distance or time rowed.</p>
+      <input type="file" id="fileInput" accept=".fit" style="display:none">
+    </div>
+
+    <div class="fields">
+      <div class="field">
+        <label>Number of intervals</label>
+        <input type="number" id="numIntervals" value="3" min="1" max="20">
+      </div>
+      <div class="field">
+        <label>Interval type</label>
+        <select id="intervalType">
+          <option value="distance">Distance (metres)</option>
+          <option value="time">Time (seconds)</option>
+        </select>
+      </div>
+      <div class="field" id="distanceField">
+        <label>Interval length (m)</label>
+        <input type="number" id="intervalLength" value="2000" min="100" max="10000" step="100">
+      </div>
+      <div class="field" id="timeField" style="display:none">
+        <label>Interval length (seconds)</label>
+        <input type="number" id="intervalLengthSec" value="300" min="30" max="3600" step="10">
+      </div>
+      <div class="field">
+        <label>Number of quarters</label>
+        <select id="numQuarters">
+          <option value="2">2 halves</option>
+          <option value="4" selected>4 quarters</option>
+          <option value="5">5 fifths</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Athlete name (optional)</label>
+        <input type="text" id="athleteName" placeholder="e.g. Vanya">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+      <button class="btn" id="analyzeBtn" disabled>Analyze Session</button>
+      <button class="btn btn-secondary" id="resetBtn">Reset</button>
+      <span id="fileName" style="font-size:12px;color:var(--text2)"></span>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <!-- Results -->
+  <div id="results">
+
+    <div class="session-header" id="sessionHeader"></div>
+
+    <div class="charts-section">
+      <h3>All pieces — by segment</h3>
+      <div class="chart-grid">
+        <div class="chart-box">
+          <div class="chart-title">Pace /500m (lower = faster)</div>
+          <div class="chart-wrap"><canvas id="chartPace"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Heart rate (bpm)</div>
+          <div class="chart-wrap"><canvas id="chartHR"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Distance per stroke (m)</div>
+          <div class="chart-wrap"><canvas id="chartDPS"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="legend" id="legend"></div>
+
+    <div class="piece-cards" id="pieceCards"></div>
+
+  </div>
+</div>
+
+<script>
+// ── FIT parser ─────────────────────────────────────────────────────────────
+function parseFIT(buffer) {
+  const raw = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const headerSize = raw[0];
+  const dataSize = view.getUint32(4, true);
+  const endPos = headerSize + dataSize;
+
+  const BASE_TYPES = {
+    0x00:{size:1,read:(v,o)=>v.getUint8(o)},
+    0x01:{size:1,read:(v,o)=>v.getInt8(o)},
+    0x02:{size:1,read:(v,o)=>v.getUint8(o)},
+    0x83:{size:2,read:(v,o)=>v.getInt16(o,true)},
+    0x84:{size:2,read:(v,o)=>v.getUint16(o,true)},
+    0x85:{size:4,read:(v,o)=>v.getInt32(o,true)},
+    0x86:{size:4,read:(v,o)=>v.getUint32(o,true)},
+    0x07:{size:1,read:(v,o)=>v.getUint8(o)},
+    0x8B:{size:2,read:(v,o)=>v.getUint16(o,true)},
+    0x8C:{size:4,read:(v,o)=>v.getUint32(o,true)},
+    0x0D:{size:1,read:(v,o)=>v.getUint8(o)},
+  };
+
+  const defs = {};
+  const records = [];
+  let pos = headerSize;
+
+  while (pos < endPos - 1) {
+    const hdr = raw[pos];
+    if (hdr & 0x80) {
+      const local = (hdr >> 5) & 0x03; pos++;
+      if (!defs[local]) continue;
+      const d = defs[local]; const row = {};
+      for (const [fnum, fsize, bt] of d.fields) {
+        if (pos + fsize > endPos) break;
+        const info = BASE_TYPES[bt];
+        row[fnum] = info ? info.read(view, pos) : 0;
+        pos += fsize;
+      }
+      if (d.mesgNum === 20) records.push(row);
+      continue;
+    }
+    const isDef = !!(hdr & 0x40);
+    const hasDev = !!(hdr & 0x20) && isDef;
+    const local = hdr & 0x0F; pos++;
+    if (isDef) {
+      pos++; // reserved
+      const arch = raw[pos++];
+      const le = arch === 0;
+      const mesgNum = le ? view.getUint16(pos, true) : view.getUint16(pos, false); pos += 2;
+      const nFields = raw[pos++];
+      const fields = [];
+      for (let i = 0; i < nFields; i++) {
+        const fnum = raw[pos++]; const fsize = raw[pos++]; const bt = raw[pos++];
+        fields.push([fnum, fsize, bt]);
+      }
+      if (hasDev) { const nd = raw[pos++]; pos += nd * 3; }
+      defs[local] = { mesgNum, fields };
+    } else {
+      if (!defs[local]) continue;
+      const d = defs[local]; const row = {};
+      for (const [fnum, fsize, bt] of d.fields) {
+        if (pos + fsize > endPos) break;
+        const info = BASE_TYPES[bt];
+        row[fnum] = info ? info.read(view, pos) : 0;
+        pos += fsize;
+      }
+      if (d.mesgNum === 20) records.push(row);
+    }
+  }
+  return records;
+}
+
+// ── Data processing ────────────────────────────────────────────────────────
+function processRecords(records) {
+  const t0 = records[0][253];
+  return records.map(r => {
+    const elapsed = (r[253] || 0) - t0;
+    const dist_m  = (r[5]   || 0) / 100;
+    const spd_mps = (r[6]   || 0) / 1000;
+    const hr      = r[3] || 0;
+    const spm     = r[4] || 0;
+    const racing  = spd_mps > 0.5 && spm > 15 && spm < 50;
+    const dps     = racing ? spd_mps * 60 / spm : 0;
+    return { elapsed, dist_m, spd_mps, hr, spm, dps, racing };
+  });
+}
+
+function fp(s) {
+  if (!isFinite(s) || s <= 0) return '--:--';
+  s = Math.round(s);
+  return `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`;
+}
+
+// Find piece end by pace drop
+function findPieceEnd(rows, tApprox, window=60, thresh=3.2) {
+  const chunk = rows.filter(r => r.elapsed >= tApprox - window && r.elapsed <= tApprox + window);
+  const fast = chunk.filter(r => r.spd_mps > thresh);
+  return fast.length ? fast[fast.length-1].elapsed : tApprox;
+}
+
+function segStats(rows, tStart, tEnd) {
+  const seg = rows.filter(r => r.elapsed >= tStart && r.elapsed <= tEnd && r.racing);
+  if (seg.length < 5) return null;
+  const avgSpd = seg.reduce((a,r) => a + r.spd_mps, 0) / seg.length;
+  const avgHR  = seg.reduce((a,r) => a + r.hr, 0) / seg.length;
+  const pkHR   = Math.max(...seg.map(r => r.hr));
+  const avgSpm = seg.reduce((a,r) => a + r.spm, 0) / seg.length;
+  const dpsArr = seg.filter(r => r.dps > 0).map(r => r.dps);
+  const avgDps = dpsArr.length ? dpsArr.reduce((a,v) => a+v, 0) / dpsArr.length : 0;
+  return { pS: avgSpd > 0 ? 500/avgSpd : 0, hr: avgHR, pkHR, spm: avgSpm, dps: avgDps, n: seg.length };
+}
+
+function segStatsByDist(rows, tStart, tEnd, d0, d1) {
+  const seg = rows.filter(r => r.elapsed >= tStart && r.elapsed <= tEnd &&
+                               r.dist_m >= d0 && r.dist_m < d1 && r.racing);
+  if (seg.length < 5) return null;
+  return segStats(rows, seg[0].elapsed, seg[seg.length-1].elapsed);
+}
+
+// Detect pieces automatically: look for sustained fast rowing
+function detectPieces(rows, numPieces, intervalType, intervalLen) {
+  // Find all "racing" windows (speed > 3.2 m/s for > 20s)
+  const fastWindows = [];
+  let inFast = false, fastStart = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (r.spd_mps > 3.2 && r.spm > 18) {
+      if (!inFast) { inFast = true; fastStart = r.elapsed; }
+    } else {
+      if (inFast && (r.elapsed - fastStart) > 30) {
+        fastWindows.push({ start: fastStart, end: rows[i-1].elapsed, dur: rows[i-1].elapsed - fastStart });
+      }
+      inFast = false;
+    }
+  }
+  if (inFast) fastWindows.push({ start: fastStart, end: rows[rows.length-1].elapsed, dur: rows[rows.length-1].elapsed - fastStart });
+
+  // Sort by duration descending, take top N
+  fastWindows.sort((a,b) => b.dur - a.dur);
+  const topN = fastWindows.slice(0, numPieces).sort((a,b) => a.start - b.start);
+  return topN;
+}
+
+// ── Piece extraction ───────────────────────────────────────────────────────
+function extractPiece(rows, pieceWindow, intervalType, intervalLen, numQ) {
+  const peApprox = pieceWindow.end;
+  const pe = findPieceEnd(rows, peApprox);
+
+  let ps, totalDist;
+  if (intervalType === 'distance') {
+    // Anchor from end by distance
+    const endD = rows.find(r => r.elapsed === pe)?.dist_m || 0;
+    const startD = endD - intervalLen;
+    const atStart = rows.find(r => r.elapsed >= pieceWindow.start - 30 && r.dist_m >= startD - 5);
+    ps = atStart ? atStart.elapsed : pieceWindow.start;
+    totalDist = intervalLen;
+  } else {
+    // Time-based
+    ps = pe - intervalLen;
+    const endD = rows.find(r => r.elapsed === pe)?.dist_m || 0;
+    const startD = rows.find(r => r.elapsed >= ps)?.dist_m || 0;
+    totalDist = endD - startD;
+  }
+
+  const overall = segStats(rows, ps, pe);
+  if (!overall) return null;
+
+  // Quarters
+  const quarters = [];
+  for (let q = 0; q < numQ; q++) {
+    let seg;
+    if (intervalType === 'distance') {
+      const endD = rows.find(r => r.elapsed === pe)?.dist_m || 0;
+      const startD = endD - intervalLen;
+      const d0 = startD + q * (intervalLen / numQ);
+      const d1 = startD + (q+1) * (intervalLen / numQ);
+      seg = segStatsByDist(rows, ps, pe, d0, d1);
+    } else {
+      const qSize = (pe - ps) / numQ;
+      seg = segStats(rows, ps + q * qSize, ps + (q+1) * qSize);
+    }
+    quarters.push(seg);
+  }
+
+  // First ~30 strokes (~60s)
+  const f30 = segStats(rows, ps, ps + 65);
+
+  // Last ~30 strokes (~60s)
+  const l30 = segStats(rows, pe - 65, pe);
+
+  return { ps, pe, overall, quarters, f30, l30, totalDist, intervalType };
+}
+
+// ── Colours ───────────────────────────────────────────────────────────────
+const PIECE_COLORS = ['#00c896','#1f6feb','#d29922','#8957e5','#f85149','#39d353','#79c0ff','#f0883e'];
+
+function buildSegLabels(numQ, intervalType, intervalLen) {
+  const labels = ['First 30'];
+  for (let q = 0; q < numQ; q++) {
+    if (intervalType === 'distance') {
+      const size = intervalLen / numQ;
+      labels.push(`${Math.round(q*size)}–${Math.round((q+1)*size)}m`);
+    } else {
+      const size = intervalLen / numQ;
+      labels.push(`${fp(q*size)}–${fp((q+1)*size)}`);
+    }
+  }
+  labels.push('Last 30');
+  return labels;
+}
+
+// ── Charts ────────────────────────────────────────────────────────────────
+let charts = {};
+function buildCharts(pieces, segLabels) {
+  ['chartPace','chartHR','chartDPS'].forEach(id => {
+    if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  });
+
+  const datasets = pieces.map((p, i) => {
+    const segs = [p.f30, ...p.quarters, p.l30];
+    return {
+      label: `P${i+1}`,
+      data: segs.map(s => s),
+      borderColor: PIECE_COLORS[i % PIECE_COLORS.length],
+      borderWidth: 2,
+      pointRadius: 4,
+      pointBackgroundColor: PIECE_COLORS[i % PIECE_COLORS.length],
+      tension: 0.3, fill: false,
+      spanGaps: true,
+    };
+  });
+
+  function mk(id, key, yOpts, tCb) {
+    const ctx = document.getElementById(id);
+    charts[id] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: segLabels,
+        datasets: datasets.map(ds => ({
+          ...ds,
+          data: ds.data.map(s => s ? s[key] : null),
+        })),
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { callbacks: { label: c => tCb(c) } },
+        },
+        scales: {
+          x: { ticks: { font: { size: 9 }, color: '#8b949e' }, grid: { color: '#30363d44' } },
+          y: { ...yOpts, ticks: { font: { size: 9 }, color: '#8b949e' }, grid: { color: '#30363d44' } },
+        },
+      },
+    });
+  }
+
+  mk('chartPace', 'pS',
+     { reverse: true, ticks: { callback: v => fp(v) } },
+     c => `${c.dataset.label}: ${fp(c.parsed.y)}/500m`);
+  mk('chartHR', 'hr',
+     {},
+     c => `${c.dataset.label}: ${Math.round(c.parsed.y)} bpm`);
+  mk('chartDPS', 'dps',
+     { ticks: { callback: v => v.toFixed(1)+'m' } },
+     c => `${c.dataset.label}: ${c.parsed.y.toFixed(2)}m/stroke`);
+}
+
+// ── UI building ───────────────────────────────────────────────────────────
+function buildSessionHeader(pieces, athleteName) {
+  const el = document.getElementById('sessionHeader');
+  const avgPace = pieces.reduce((a,p) => a + p.overall.pS, 0) / pieces.length;
+  const bestPace = Math.min(...pieces.map(p => p.overall.pS));
+  const peakHR = Math.max(...pieces.map(p => p.overall.pkHR));
+  const avgDPS = pieces.reduce((a,p) => a + p.overall.dps, 0) / pieces.length;
+
+  el.innerHTML = `
+    <div class="stat-card"><div class="label">${athleteName ? athleteName + ' · ' : ''}Pieces</div><div class="value">${pieces.length}</div></div>
+    <div class="stat-card"><div class="label">Avg pace</div><div class="value">${fp(avgPace)}</div><div class="sub">per 500m</div></div>
+    <div class="stat-card"><div class="label">Best piece</div><div class="value">${fp(bestPace)}</div><div class="sub">per 500m</div></div>
+    <div class="stat-card"><div class="label">Peak HR</div><div class="value">${peakHR}</div><div class="sub">bpm</div></div>
+    <div class="stat-card"><div class="label">Avg DPS</div><div class="value">${avgDPS.toFixed(2)}</div><div class="sub">m/stroke</div></div>
+  `;
+}
+
+function buildLegend(pieces) {
+  const el = document.getElementById('legend');
+  el.innerHTML = pieces.map((p, i) => {
+    const c = PIECE_COLORS[i % PIECE_COLORS.length];
+    return `<div class="legend-item"><div class="legend-dot" style="background:${c}"></div>P${i+1} · ${fp(p.overall.pS)}/500m</div>`;
+  }).join('');
+}
+
+function buildPieceCards(pieces, segLabels, numQ, intervalType, intervalLen, rawRows) {
+  const el = document.getElementById('pieceCards');
+  el.innerHTML = '';
+
+  pieces.forEach((p, i) => {
+    const c = PIECE_COLORS[i % PIECE_COLORS.length];
+    const divName = `piece-detail-${i}`;
+    const chevId = `chev-${i}`;
+
+    // Quarter rows
+    const qNames = segLabels.slice(1, segLabels.length - 1);
+    const quarterRows = p.quarters.map((q, qi) => {
+      if (!q) return `<tr><td colspan="6" style="color:var(--text3);padding:7px 16px">Q${qi+1} — insufficient data</td></tr>`;
+      return `<tr>
+        <td><span class="seg-label" style="background:${c}22;color:${c}">${qNames[qi]}</span></td>
+        <td class="r">${fp(q.pS)}</td>
+        <td class="r">${q.spm.toFixed(1)}</td>
+        <td class="r">${q.dps.toFixed(2)}m</td>
+        <td class="r">${Math.round(q.hr)}</td>
+        <td class="r" style="color:var(--text3)">${q.pkHR}</td>
+      </tr>`;
+    }).join('');
+
+    // Rest time
+    let restHtml = '';
+    if (i > 0) {
+      const prevPE = pieces[i-1].pe;
+      const restSec = p.ps - prevPE;
+      restHtml = `<div class="rest-row">↕ Rest ~${fp(restSec)}</div>`;
+    }
+
+    const distStr = intervalType === 'distance'
+      ? `${intervalLen}m`
+      : `${fp(parseInt(document.getElementById('intervalLengthSec').value))}`;
+
+    el.innerHTML += `
+      ${restHtml}
+      <div class="piece-card">
+        <div class="piece-header" onclick="toggleDetail(${i})">
+          <div class="piece-num" style="color:${c}">P${i+1}</div>
+          <div class="piece-pace" style="color:${c}">${fp(p.overall.pS)}<span style="font-size:13px;font-weight:400;color:var(--text2)"> /500m</span></div>
+          <div class="piece-meta">${distStr}</div>
+          <div class="piece-meta">spm ${p.overall.spm.toFixed(1)}</div>
+          <div class="piece-meta">${p.overall.dps.toFixed(2)}m DPS</div>
+          <div class="piece-meta">HR ${Math.round(p.overall.hr)}/pk${p.overall.pkHR}</div>
+          <div class="piece-chevron" id="${chevId}">▼</div>
+        </div>
+        <div class="piece-detail" id="${divName}">
+          <table class="qtable">
+            <thead><tr>
+              <th>Segment</th><th class="r">Pace</th><th class="r">spm</th>
+              <th class="r">DPS</th><th class="r">HR avg</th><th class="r">HR pk</th>
+            </tr></thead>
+            <tbody>
+              <tr class="first30">
+                <td><span class="seg-label" style="background:${c}33;color:${c}">First ~30 strokes</span></td>
+                <td class="r">${p.f30 ? fp(p.f30.pS) : '--'}</td>
+                <td class="r">${p.f30 ? p.f30.spm.toFixed(1) : '--'}</td>
+                <td class="r">${p.f30 ? p.f30.dps.toFixed(2)+'m' : '--'}</td>
+                <td class="r">${p.f30 ? Math.round(p.f30.hr) : '--'}</td>
+                <td class="r">${p.f30 ? p.f30.pkHR : '--'}</td>
+              </tr>
+              ${quarterRows}
+              <tr class="last30">
+                <td><span class="seg-label" style="background:${c}33;color:${c}">Last ~30 strokes</span></td>
+                <td class="r">${p.l30 ? fp(p.l30.pS) : '--'}</td>
+                <td class="r">${p.l30 ? p.l30.spm.toFixed(1) : '--'}</td>
+                <td class="r">${p.l30 ? p.l30.dps.toFixed(2)+'m' : '--'}</td>
+                <td class="r">${p.l30 ? Math.round(p.l30.hr) : '--'}</td>
+                <td class="r">${p.l30 ? p.l30.pkHR : '--'}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  });
+}
+
+function toggleDetail(i) {
+  const detail = document.getElementById(`piece-detail-${i}`);
+  const chev   = document.getElementById(`chev-${i}`);
+  detail.classList.toggle('open');
+  chev.classList.toggle('open');
+}
+
+// ── Status helper ─────────────────────────────────────────────────────────
+function setStatus(msg, type='info') {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = `status ${type}`;
+  el.style.display = 'block';
+}
+function clearStatus() {
+  document.getElementById('status').style.display = 'none';
+}
+
+// ── Main analyze ──────────────────────────────────────────────────────────
+let fitBuffer = null;
+
+async function analyze() {
+  if (!fitBuffer) return;
+  clearStatus();
+  setStatus('Parsing FIT file…');
+
+  try {
+    const records = parseFIT(fitBuffer);
+    if (!records.length) throw new Error('No data records found in FIT file.');
+
+    const rows = processRecords(records);
+    const numPieces = parseInt(document.getElementById('numIntervals').value);
+    const intervalType = document.getElementById('intervalType').value;
+    const intervalLen = intervalType === 'distance'
+      ? parseInt(document.getElementById('intervalLength').value)
+      : parseInt(document.getElementById('intervalLengthSec').value);
+    const numQ = parseInt(document.getElementById('numQuarters').value);
+    const athleteName = document.getElementById('athleteName').value.trim();
+
+    setStatus('Detecting pieces…');
+    const windows = detectPieces(rows, numPieces, intervalType, intervalLen);
+
+    if (windows.length < numPieces) {
+      setStatus(`⚠ Only ${windows.length} piece(s) detected (expected ${numPieces}). Showing what was found.`, 'error');
+    }
+
+    setStatus('Extracting quarters and sprint segments…');
+    const pieces = windows.map(w => extractPiece(rows, w, intervalType, intervalLen, numQ)).filter(Boolean);
+
+    if (!pieces.length) throw new Error('Could not extract any pieces. Check interval settings.');
+
+    const segLabels = buildSegLabels(numQ, intervalType, intervalLen);
+
+    // Build UI
+    buildSessionHeader(pieces, athleteName);
+    buildLegend(pieces);
+    buildCharts(pieces, segLabels);
+    buildPieceCards(pieces, segLabels, numQ, intervalType, intervalLen, rows);
+
+    // Auto-open first piece
+    document.getElementById('piece-detail-0')?.classList.add('open');
+    document.getElementById('chev-0')?.classList.add('open');
+
+    document.getElementById('results').style.display = 'block';
+    clearStatus();
+    setStatus(`✓ ${pieces.length} piece${pieces.length>1?'s':''} analyzed successfully.`, 'success');
+
+  } catch (e) {
+    setStatus(`Error: ${e.message}`, 'error');
+    console.error(e);
+  }
+}
+
+// ── Event wiring ──────────────────────────────────────────────────────────
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) loadFile(file);
+});
+
+fileInput.addEventListener('change', e => {
+  const file = e.target.files[0];
+  if (file) loadFile(file);
+});
+
+function loadFile(file) {
+  document.getElementById('fileName').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    fitBuffer = e.target.result;
+    document.getElementById('analyzeBtn').disabled = false;
+    setStatus(`File loaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'success');
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+document.getElementById('analyzeBtn').addEventListener('click', analyze);
+
+document.getElementById('resetBtn').addEventListener('click', () => {
+  fitBuffer = null;
+  document.getElementById('fileName').textContent = '';
+  document.getElementById('analyzeBtn').disabled = true;
+  document.getElementById('results').style.display = 'none';
+  clearStatus();
+  fileInput.value = '';
+});
+
+document.getElementById('intervalType').addEventListener('change', e => {
+  document.getElementById('distanceField').style.display = e.target.value === 'distance' ? '' : 'none';
+  document.getElementById('timeField').style.display     = e.target.value === 'time'     ? '' : 'none';
+});
+</script>
+</body>
+</html>
