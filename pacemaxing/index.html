@@ -475,28 +475,33 @@ function segStatsByDist(rows, tStart, tEnd, d0, d1) {
   return segStats(rows, seg[0].elapsed, seg[seg.length-1].elapsed);
 }
 
-// Detect pieces automatically: look for sustained fast rowing
+// Detect pieces automatically: look for sustained fast rowing.
+// A brief sub-threshold dip (≤ GRACE seconds) does NOT end a piece — otherwise a
+// single slow stroke mid-piece splits one piece into two and the end is
+// registered early (see the P4 wind-down case). The window end is the last
+// genuinely-fast sample, not the slow sample that tripped the threshold.
 function detectPieces(rows, numPieces, intervalType, intervalLen) {
-  // Find all "racing" windows (speed > 3.2 m/s for > 20s)
+  const GRACE = 12;
   const fastWindows = [];
-  let inFast = false, fastStart = 0;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
+  let inFast = false, fastStart = 0, lastFast = 0;
+  const flush = () => {
+    if (inFast && (lastFast - fastStart) > 30)
+      fastWindows.push({ start: fastStart, end: lastFast, dur: lastFast - fastStart });
+    inFast = false;
+  };
+  for (const r of rows) {
     if (r.spd_mps > 3.2 && r.spm > 18) {
       if (!inFast) { inFast = true; fastStart = r.elapsed; }
-    } else {
-      if (inFast && (r.elapsed - fastStart) > 30) {
-        fastWindows.push({ start: fastStart, end: rows[i-1].elapsed, dur: rows[i-1].elapsed - fastStart });
-      }
-      inFast = false;
+      lastFast = r.elapsed;
+    } else if (inFast && (r.elapsed - lastFast) > GRACE) {
+      flush();
     }
   }
-  if (inFast) fastWindows.push({ start: fastStart, end: rows[rows.length-1].elapsed, dur: rows[rows.length-1].elapsed - fastStart });
+  flush();
 
-  // Sort by duration descending, take top N
+  // Sort by duration descending, take top N, restore chronological order
   fastWindows.sort((a,b) => b.dur - a.dur);
-  const topN = fastWindows.slice(0, numPieces).sort((a,b) => a.start - b.start);
-  return topN;
+  return fastWindows.slice(0, numPieces).sort((a,b) => a.start - b.start);
 }
 
 // ── Piece extraction ───────────────────────────────────────────────────────
