@@ -294,13 +294,21 @@
         <label>Interval length (seconds)</label>
         <input type="number" id="intervalLengthSec" value="300" min="30" max="3600" step="10">
       </div>
-      <div class="field">
-        <label>Number of quarters</label>
-        <select id="numQuarters">
-          <option value="2">2 halves</option>
-          <option value="4" selected>4 quarters</option>
-          <option value="5">5 fifths</option>
-        </select>
+      <div class="field" style="grid-column:1 / -1;">
+        <label>Segments &mdash; applied end-anchored; total must equal the piece</label>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <select id="segmentPreset" style="max-width:260px;">
+            <option value="halves">Equal halves</option>
+            <option value="quarters" selected>Equal quarters</option>
+            <option value="fifths">Equal fifths</option>
+            <option value="411">4&prime; / 1&prime; / 1&prime; (6-min ladder)</option>
+            <option value="421">4&prime; / 2&prime; / 1&prime; (7-min ladder)</option>
+            <option value="custom">Custom&hellip;</option>
+          </select>
+          <button class="btn btn-secondary" id="addSegBtn" type="button" style="padding:7px 12px;">+ Add segment</button>
+        </div>
+        <div id="segRows"></div>
+        <div id="segTotal" style="font-family:var(--mono);font-size:12px;margin-top:4px;"></div>
       </div>
       <div class="field">
         <label>Athlete name (optional)</label>
@@ -492,7 +500,7 @@ function detectPieces(rows, numPieces, intervalType, intervalLen) {
 }
 
 // ── Piece extraction ───────────────────────────────────────────────────────
-function extractPiece(rows, pieceWindow, intervalType, intervalLen, numQ) {
+function extractPiece(rows, pieceWindow, intervalType, intervalLen, segments) {
   const peApprox = pieceWindow.end;
   const pe = findPieceEnd(rows, peApprox);
 
@@ -515,21 +523,26 @@ function extractPiece(rows, pieceWindow, intervalType, intervalLen, numQ) {
   const overall = segStats(rows, ps, pe);
   if (!overall) return null;
 
-  // Quarters
-  const quarters = [];
-  for (let q = 0; q < numQ; q++) {
-    let seg;
-    if (intervalType === 'distance') {
-      const endD = rows.find(r => r.elapsed === pe)?.dist_m || 0;
-      const startD = endD - intervalLen;
-      const d0 = startD + q * (intervalLen / numQ);
-      const d1 = startD + (q+1) * (intervalLen / numQ);
-      seg = segStatsByDist(rows, ps, pe, d0, d1);
-    } else {
-      const qSize = (pe - ps) / numQ;
-      seg = segStats(rows, ps + q * qSize, ps + (q+1) * qSize);
+  // Custom segments — values are seconds (time) or metres (distance), in table
+  // order start→end. Since the segment total equals the piece length and ps/pe
+  // are end-anchored, accumulating forward from ps is equivalent to anchoring
+  // from the end.
+  const segs = [];
+  if (intervalType === 'distance') {
+    const endD = rows.find(r => r.elapsed === pe)?.dist_m || 0;
+    const startD = endD - intervalLen;
+    let cum = 0;
+    for (const s of segments) {
+      const d0 = startD + cum, d1 = startD + cum + s.value;
+      segs.push(segStatsByDist(rows, ps, pe, d0, d1));
+      cum += s.value;
     }
-    quarters.push(seg);
+  } else {
+    let cum = 0;
+    for (const s of segments) {
+      segs.push(segStats(rows, ps + cum, ps + cum + s.value));
+      cum += s.value;
+    }
   }
 
   // First ~30 strokes (~60s)
@@ -538,25 +551,14 @@ function extractPiece(rows, pieceWindow, intervalType, intervalLen, numQ) {
   // Last ~30 strokes (~60s)
   const l30 = segStats(rows, pe - 65, pe);
 
-  return { ps, pe, overall, quarters, f30, l30, totalDist, intervalType };
+  return { ps, pe, overall, segs, f30, l30, totalDist, intervalType };
 }
 
 // ── Colours ───────────────────────────────────────────────────────────────
 const PIECE_COLORS = ['#00c896','#1f6feb','#d29922','#8957e5','#f85149','#39d353','#79c0ff','#f0883e'];
 
-function buildSegLabels(numQ, intervalType, intervalLen) {
-  const labels = ['First 30'];
-  for (let q = 0; q < numQ; q++) {
-    if (intervalType === 'distance') {
-      const size = intervalLen / numQ;
-      labels.push(`${Math.round(q*size)}–${Math.round((q+1)*size)}m`);
-    } else {
-      const size = intervalLen / numQ;
-      labels.push(`${fp(q*size)}–${fp((q+1)*size)}`);
-    }
-  }
-  labels.push('Last 30');
-  return labels;
+function buildSegLabels(segments) {
+  return ['First 30', ...segments.map((s, i) => s.label || `Seg ${i+1}`), 'Last 30'];
 }
 
 // ── Charts ────────────────────────────────────────────────────────────────
@@ -567,7 +569,7 @@ function buildCharts(pieces, segLabels) {
   });
 
   const datasets = pieces.map((p, i) => {
-    const segs = [p.f30, ...p.quarters, p.l30];
+    const segs = [p.f30, ...p.segs, p.l30];
     return {
       label: `P${i+1}`,
       data: segs.map(s => s),
@@ -599,7 +601,7 @@ function buildCharts(pieces, segLabels) {
           tooltip: { callbacks: { label: c => tCb(c) } },
         },
         scales: {
-          x: { ticks: { font: { size: 9 }, color: '#8b949e' }, grid: { color: '#30363d44' } },
+          x: { ticks: { font: { size: 9 }, color: '#8b949e', callback: function(v){ const l = this.getLabelForValue(v); return (l && l.length > 10) ? l.slice(0,9)+'…' : l; } }, grid: { color: '#30363d44' } },
           y: { ...yOpts, ticks: { font: { size: 9 }, color: '#8b949e' }, grid: { color: '#30363d44' } },
         },
       },
@@ -642,7 +644,7 @@ function buildLegend(pieces) {
   }).join('');
 }
 
-function buildPieceCards(pieces, segLabels, numQ, intervalType, intervalLen, rawRows) {
+function buildPieceCards(pieces, segLabels, intervalType, intervalLen, rawRows) {
   const el = document.getElementById('pieceCards');
   el.innerHTML = '';
 
@@ -651,10 +653,10 @@ function buildPieceCards(pieces, segLabels, numQ, intervalType, intervalLen, raw
     const divName = `piece-detail-${i}`;
     const chevId = `chev-${i}`;
 
-    // Quarter rows
+    // Segment rows
     const qNames = segLabels.slice(1, segLabels.length - 1);
-    const quarterRows = p.quarters.map((q, qi) => {
-      if (!q) return `<tr><td colspan="6" style="color:var(--text3);padding:7px 16px">Q${qi+1} — insufficient data</td></tr>`;
+    const quarterRows = p.segs.map((q, qi) => {
+      if (!q) return `<tr><td colspan="6" style="color:var(--text3);padding:7px 16px">${qNames[qi] || ('Segment '+(qi+1))} — insufficient data</td></tr>`;
       return `<tr>
         <td><span class="seg-label" style="background:${c}22;color:${c}">${qNames[qi]}</span></td>
         <td class="r">${fp(q.pS)}</td>
@@ -738,6 +740,94 @@ function clearStatus() {
   document.getElementById('status').style.display = 'none';
 }
 
+// ── Custom segment builder ──────────────────────────────────────────────────
+// window.segments[i].value is in the interval base unit: seconds (time-based)
+// or metres (distance-based). The table input is shown in minutes / metres.
+window.segments = [];
+let segEdited = false;
+
+function curIntervalType() { return document.getElementById('intervalType').value; }
+function curBaseUnit()     { return curIntervalType() === 'time' ? 'sec' : 'm'; }
+function pieceLenBase() {
+  const id = curIntervalType() === 'time' ? 'intervalLengthSec' : 'intervalLength';
+  return parseInt(document.getElementById(id).value) || 0;
+}
+const segTolerance = () => 1;                                   // 1s or 1m
+function valueToInput(v) { return curBaseUnit() === 'sec' ? +(v/60).toFixed(4) : v; }   // sec→min, m→m
+function inputToValue(x) { return curBaseUnit() === 'sec' ? Math.round(x*60) : Math.round(x); }
+function fmtTotal(v)     { return curBaseUnit() === 'sec' ? fp(v) : `${Math.round(v)}m`; }
+function fmtLen()        { return fmtTotal(pieceLenBase()); }
+
+function segmentsTotal() { return window.segments.reduce((a,s) => a + (s.value||0), 0); }
+function segmentsValid() {
+  if (!window.segments.length || window.segments.length > 8) return false;
+  if (window.segments.some(s => !s.value || s.value <= 0)) return false;
+  return Math.abs(segmentsTotal() - pieceLenBase()) <= segTolerance();
+}
+
+function applyPreset(id) {
+  const len = pieceLenBase(), unit = curBaseUnit();
+  const eq = (n, names) => Array.from({length:n}, (_,i) => ({ label: names[i], value: Math.round(len/n) }));
+  if ((id === '411' || id === '421') && unit !== 'sec') {
+    setStatus('The minute-ladder presets apply to time-based pieces. Switch interval type to Time, or use an equal preset.', 'error');
+    document.getElementById('segmentPreset').value = 'custom';
+    return;
+  }
+  switch (id) {
+    case 'halves':   window.segments = eq(2, ['Half 1','Half 2']); break;
+    case 'quarters': window.segments = eq(4, ['Q1','Q2','Q3','Q4']); break;
+    case 'fifths':   window.segments = eq(5, ['1/5','2/5','3/5','4/5','5/5']); break;
+    case '411':      window.segments = [{label:'Base',value:240},{label:'Build',value:60},{label:'Sprint',value:60}]; break;
+    case '421':      window.segments = [{label:'Base',value:240},{label:'Build',value:120},{label:'Sprint',value:60}]; break;
+    case 'custom':   if (!window.segments.length) window.segments = eq(4, ['Q1','Q2','Q3','Q4']); break;
+  }
+  // make equal presets sum exactly to the piece length (absorb rounding in last seg)
+  if (['halves','quarters','fifths'].includes(id) && window.segments.length) {
+    window.segments[window.segments.length-1].value += (len - segmentsTotal());
+  }
+  segEdited = false;
+  renderSegTable(); updateSegTotalUI(); updateAnalyzeEnabled();
+}
+
+function renderSegTable() {
+  const unit = curBaseUnit();
+  document.getElementById('segRows').innerHTML = window.segments.map((s, i) => `
+    <div style="display:grid;grid-template-columns:1fr 96px 24px;gap:8px;margin-bottom:6px;align-items:center;">
+      <input class="seg-label-in" type="text" data-i="${i}" placeholder="Label" value="${String(s.label||'').replace(/"/g,'&quot;')}">
+      <span style="display:flex;align-items:center;gap:5px;">
+        <input class="seg-val-in" type="number" data-i="${i}" min="0" step="${unit==='sec'?'0.25':'10'}" value="${valueToInput(s.value)}" style="width:64px;">
+        <span style="font-size:11px;color:var(--text2)">${unit==='sec'?'min':'m'}</span>
+      </span>
+      <button class="seg-del" type="button" data-i="${i}" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:15px;line-height:1;">✕</button>
+    </div>`).join('');
+}
+
+function updateSegTotalUI() {
+  const el = document.getElementById('segTotal');
+  if (!el) return;
+  const total = segmentsTotal(), len = pieceLenBase(), ok = segmentsValid(), diff = total - len;
+  let msg = `Total: ${fmtTotal(total)} / ${fmtLen()}`;
+  if (ok) msg += '  ✓ matches piece length';
+  else if (window.segments.some(s => !s.value || s.value <= 0)) msg += '  ✗ each segment must be > 0';
+  else msg += diff > 0 ? `  ✗ ${fmtTotal(Math.abs(diff))} over` : `  ✗ ${fmtTotal(Math.abs(diff))} short`;
+  el.textContent = msg;
+  el.style.color = ok ? 'var(--accent)' : '#f85149';
+}
+
+function addSegment() {
+  if (window.segments.length >= 8) return;
+  window.segments.push({ label: `Seg ${window.segments.length+1}`, value: curBaseUnit()==='sec' ? 60 : 100 });
+  segEdited = true;
+  document.getElementById('segmentPreset').value = 'custom';
+  renderSegTable(); updateSegTotalUI(); updateAnalyzeEnabled();
+}
+function removeSegment(i) {
+  window.segments.splice(i, 1);
+  segEdited = true;
+  document.getElementById('segmentPreset').value = 'custom';
+  renderSegTable(); updateSegTotalUI(); updateAnalyzeEnabled();
+}
+
 // ── Main analyze ──────────────────────────────────────────────────────────
 let fitBuffer = null;
 
@@ -756,8 +846,12 @@ async function analyze() {
     const intervalLen = intervalType === 'distance'
       ? parseInt(document.getElementById('intervalLength').value)
       : parseInt(document.getElementById('intervalLengthSec').value);
-    const numQ = parseInt(document.getElementById('numQuarters').value);
     const athleteName = document.getElementById('athleteName').value.trim();
+
+    if (!segmentsValid()) {
+      throw new Error(`Segment total (${fmtTotal(segmentsTotal())}) must equal the piece length (${fmtLen()}). Adjust the segments and try again.`);
+    }
+    const segments = window.segments.map(s => ({ ...s }));
 
     setStatus('Detecting pieces…');
     const windows = detectPieces(rows, numPieces, intervalType, intervalLen);
@@ -766,18 +860,18 @@ async function analyze() {
       setStatus(`⚠ Only ${windows.length} piece(s) detected (expected ${numPieces}). Showing what was found.`, 'error');
     }
 
-    setStatus('Extracting quarters and sprint segments…');
-    const pieces = windows.map(w => extractPiece(rows, w, intervalType, intervalLen, numQ)).filter(Boolean);
+    setStatus('Extracting segments…');
+    const pieces = windows.map(w => extractPiece(rows, w, intervalType, intervalLen, segments)).filter(Boolean);
 
     if (!pieces.length) throw new Error('Could not extract any pieces. Check interval settings.');
 
-    const segLabels = buildSegLabels(numQ, intervalType, intervalLen);
+    const segLabels = buildSegLabels(segments);
 
     // Build UI
     buildSessionHeader(pieces, athleteName);
     buildLegend(pieces);
     buildCharts(pieces, segLabels);
-    buildPieceCards(pieces, segLabels, numQ, intervalType, intervalLen, rows);
+    buildPieceCards(pieces, segLabels, intervalType, intervalLen, rows);
 
     // Auto-open first piece
     document.getElementById('piece-detail-0')?.classList.add('open');
@@ -817,7 +911,7 @@ function loadFile(file) {
   const reader = new FileReader();
   reader.onload = e => {
     fitBuffer = e.target.result;
-    document.getElementById('analyzeBtn').disabled = false;
+    updateAnalyzeEnabled();
     setStatus(`File loaded: ${file.name} (${(file.size/1024).toFixed(1)} KB)`, 'success');
   };
   reader.readAsArrayBuffer(file);
@@ -828,7 +922,7 @@ document.getElementById('analyzeBtn').addEventListener('click', analyze);
 document.getElementById('resetBtn').addEventListener('click', () => {
   fitBuffer = null;
   document.getElementById('fileName').textContent = '';
-  document.getElementById('analyzeBtn').disabled = true;
+  updateAnalyzeEnabled();
   document.getElementById('results').style.display = 'none';
   clearStatus();
   fileInput.value = '';
@@ -837,7 +931,48 @@ document.getElementById('resetBtn').addEventListener('click', () => {
 document.getElementById('intervalType').addEventListener('change', e => {
   document.getElementById('distanceField').style.display = e.target.value === 'distance' ? '' : 'none';
   document.getElementById('timeField').style.display     = e.target.value === 'time'     ? '' : 'none';
+  // unit changed → reset the segment table to equal quarters in the new unit
+  document.getElementById('segmentPreset').value = 'quarters';
+  applyPreset('quarters');
+  setStatus('Interval type changed — segment table reset to equal quarters.', 'info');
 });
+
+// ── Segment-builder wiring + init ──────────────────────────────────────────
+function updateAnalyzeEnabled() {
+  document.getElementById('analyzeBtn').disabled = !(fitBuffer && segmentsValid());
+}
+
+document.getElementById('segRows').addEventListener('input', e => {
+  const i = +e.target.dataset.i;
+  if (Number.isNaN(i) || !window.segments[i]) return;
+  if (e.target.classList.contains('seg-label-in'))      window.segments[i].label = e.target.value;
+  else if (e.target.classList.contains('seg-val-in'))   window.segments[i].value = inputToValue(parseFloat(e.target.value) || 0);
+  segEdited = true;
+  document.getElementById('segmentPreset').value = 'custom';
+  updateSegTotalUI(); updateAnalyzeEnabled();
+});
+document.getElementById('segRows').addEventListener('click', e => {
+  if (e.target.classList.contains('seg-del')) removeSegment(+e.target.dataset.i);
+});
+document.getElementById('addSegBtn').addEventListener('click', addSegment);
+document.getElementById('segmentPreset').addEventListener('change', e => {
+  const id = e.target.value;
+  if (id !== 'custom' && segEdited && !confirm('Replace your edited segments with this preset?')) {
+    e.target.value = 'custom';
+    return;
+  }
+  applyPreset(id);
+});
+['intervalLength','intervalLengthSec'].forEach(id =>
+  document.getElementById(id).addEventListener('input', () => {
+    const p = document.getElementById('segmentPreset').value;
+    if (['halves','quarters','fifths'].includes(p) && !segEdited) applyPreset(p);
+    else { updateSegTotalUI(); updateAnalyzeEnabled(); }
+  }));
+
+// initialise with equal quarters in the current unit
+applyPreset('quarters');
+updateAnalyzeEnabled();
 </script>
 </body>
 </html>
