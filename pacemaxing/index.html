@@ -330,6 +330,10 @@
 
     <div class="session-header" id="sessionHeader"></div>
 
+    <div style="display:flex;justify-content:flex-end;margin:-4px 0 16px;">
+      <button class="btn" id="exportImgBtn" type="button">📷 Save 1:1 image for Strava</button>
+    </div>
+
     <div class="charts-section">
       <h3>All pieces — by segment</h3>
       <div class="chart-grid">
@@ -734,6 +738,80 @@ function toggleDetail(i) {
   chev.classList.toggle('open');
 }
 
+// ── Session image export (1:1, for Strava) ─────────────────────────────────
+function _rrect(g, X, Y, w, h, r){ g.beginPath(); g.moveTo(X+r,Y); g.arcTo(X+w,Y,X+w,Y+h,r); g.arcTo(X+w,Y+h,X,Y+h,r); g.arcTo(X,Y+h,X,Y,r); g.arcTo(X,Y,X+w,Y,r); g.closePath(); }
+
+function renderSessionCanvas() {
+  const S = window.lastSession;
+  if (!S || !S.pieces || !S.pieces.length) return null;
+  const { pieces, segLabels, athleteName, intervalType, intervalLen } = S;
+  const W = 1080, H = 1080, P = 64;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+  const GREEN='#00c896', BG='#0d1117', CARD='#161b22', TXT='#e6edf3', T2='#8b949e';
+  const F = (w,s) => `${w} ${s}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  g.fillStyle = BG; g.fillRect(0,0,W,H);
+  g.textAlign = 'left'; g.textBaseline = 'alphabetic';
+
+  // header
+  g.fillStyle = GREEN; g.font = F(700,56); g.fillText('PaceMaxing', P, 96);
+  const shape = intervalType === 'distance' ? `${pieces.length} × ${intervalLen}m`
+                                            : `${pieces.length} × ${fp(intervalLen)}`;
+  g.fillStyle = T2; g.font = F(400,28);
+  g.fillText(`${athleteName ? athleteName + '  ·  ' : ''}${shape} rowing pieces`, P, 138);
+
+  // summary stat cards
+  const avg  = pieces.reduce((a,p)=>a+p.overall.pS,0)/pieces.length;
+  const best = Math.min(...pieces.map(p=>p.overall.pS));
+  const peak = Math.max(...pieces.map(p=>p.overall.pkHR));
+  const dps  = pieces.reduce((a,p)=>a+p.overall.dps,0)/pieces.length;
+  const stats = [['Avg pace',fp(avg),'/500m'],['Best',fp(best),'/500m'],['Peak HR',String(peak),'bpm'],['Avg DPS',dps.toFixed(2),'m/str']];
+  const sy=170, sh=112, sw=(W-2*P-3*16)/4;
+  stats.forEach((s,i)=>{ const sx=P+i*(sw+16);
+    g.fillStyle=CARD; _rrect(g,sx,sy,sw,sh,12); g.fill();
+    g.fillStyle=T2;    g.font=F(500,19); g.fillText(s[0],sx+16,sy+33);
+    g.fillStyle=GREEN; g.font=F(700,40); g.fillText(s[1],sx+16,sy+80);
+    g.fillStyle=T2;    g.font=F(400,17); g.fillText(s[2],sx+16,sy+102);
+  });
+
+  // per-piece rows
+  const segNames = segLabels.slice(1,-1);
+  const top=320, bottom=H-180, n=pieces.length, gap=14;
+  const rowH = Math.max(60, Math.min(150, (bottom-top-(n-1)*gap)/n));
+  const fP=Math.min(46,rowH*0.42), fS=Math.min(23,rowH*0.20), fB=Math.min(30,rowH*0.26);
+  pieces.forEach((p,i)=>{ const ry=top+i*(rowH+gap), c=PIECE_COLORS[i%PIECE_COLORS.length];
+    g.fillStyle=CARD; _rrect(g,P,ry,W-2*P,rowH,12); g.fill();
+    g.fillStyle=c;   g.font=F(700,fB); g.fillText('P'+(i+1), P+20, ry+rowH*0.5+fB*0.35);
+    g.fillStyle=TXT; g.font=F(700,fP); g.fillText(fp(p.overall.pS), P+100, ry+rowH*0.5+fP*0.10);
+    g.fillStyle=T2;  g.font=F(400,fS); g.fillText('/500m', P+100, ry+rowH*0.5+fP*0.10+fS+4);
+    const colX=P+260;
+    g.fillStyle=T2; g.font=F(400,fS);
+    g.fillText(`${p.overall.spm.toFixed(1)} spm    ${p.overall.dps.toFixed(2)} m/str    HR ${Math.round(p.overall.hr)}/${p.overall.pkHR}`, colX, ry+rowH*0.40);
+    let seg = p.segs.map((s,si)=>`${segNames[si]} ${s?fp(s.pS):'--'}`).join('   ·   ');
+    g.fillStyle='#b7c0c9'; g.font=F(400,Math.min(22,fS+1));
+    const maxW=W-P-colX; while(seg.length>4 && g.measureText(seg).width>maxW) seg=seg.slice(0,-2);
+    g.fillText(seg, colX, ry+rowH*0.82);
+  });
+
+  // footer CTA — how to access the app
+  const fy=H-128;
+  g.fillStyle=GREEN; _rrect(g,P,fy,W-2*P,96,16); g.fill();
+  g.fillStyle='#04221b';
+  g.font=F(700,34); g.fillText('▶  goeppertvb.github.io/send-it/pacemaxing', P+28, fy+44);
+  g.font=F(500,22); g.fillText('Free rowing .fit analyzer — drop your file, runs in your browser', P+28, fy+78);
+  return cv;
+}
+
+function exportSessionImage() {
+  const cv = renderSessionCanvas();
+  if (!cv) { setStatus('Analyze a session first.', 'error'); return; }
+  const S = window.lastSession;
+  const a = document.createElement('a');
+  a.download = `pacemaxing-${(S.athleteName||'session').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'session'}.jpg`;
+  a.href = cv.toDataURL('image/jpeg', 0.95);
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
 // ── Status helper ─────────────────────────────────────────────────────────
 function setStatus(msg, type='info') {
   const el = document.getElementById('status');
@@ -877,6 +955,7 @@ async function analyze() {
     buildLegend(pieces);
     buildCharts(pieces, segLabels);
     buildPieceCards(pieces, segLabels, intervalType, intervalLen, rows);
+    window.lastSession = { pieces, segLabels, athleteName, intervalType, intervalLen };
 
     // Auto-open first piece
     document.getElementById('piece-detail-0')?.classList.add('open');
@@ -923,6 +1002,7 @@ function loadFile(file) {
 }
 
 document.getElementById('analyzeBtn').addEventListener('click', analyze);
+document.getElementById('exportImgBtn').addEventListener('click', exportSessionImage);
 
 document.getElementById('resetBtn').addEventListener('click', () => {
   fitBuffer = null;
