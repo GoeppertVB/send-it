@@ -4,11 +4,15 @@ Open-source sports performance tools for data-driven athletes.
 
 Single-file browser apps — no install, no server, no account. Drop in your data and go.
 
+## ▶ [Open PaceMaxing — analyze your rowing `.fit`](https://goeppertvb.github.io/send-it/pacemaxing/)
+
+Drop a Coros / Garmin / SpeedCoach `.fit` file and get an instant per-piece breakdown — custom segments, first/last-30-stroke splits, and pace · rate · DPS · HR. Free, runs 100% in your browser, nothing uploaded.
+
 ## Tools
 
 | App | Description | Live |
 |-----|-------------|------|
-| [PaceMaxing](./pacemaxing/) | Rowing interval analyzer — FIT file → pace, DPS, HR by quarter and sprint segment | [Open](https://goeppertvb.github.io/send-it/pacemaxing/) |
+| [PaceMaxing](./pacemaxing/) | Rowing interval analyzer — FIT file → pace · rate · DPS · HR by custom segment, plus first/last-30-stroke splits | [Open](https://goeppertvb.github.io/send-it/pacemaxing/) |
 
 ## Philosophy
 
