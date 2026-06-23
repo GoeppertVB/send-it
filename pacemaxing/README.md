@@ -1,15 +1,20 @@
 # PaceMaxing
 
-**Rowing interval analyzer.** Drop in a FIT file, set your workout parameters, get a full breakdown of every piece — pace, stroke rate, DPS, and HR by quarter, plus first and last 30-stroke sprint segments.
+**Rowing interval analyzer.** Drop in a FIT file, set your workout parameters, get a full breakdown of every piece — pace, stroke rate, DPS, and HR by custom segment, plus first and last 30-stroke sprint segments.
+
+## ▶ [Open PaceMaxing — analyze your rowing `.fit`](https://goeppertvb.github.io/send-it/pacemaxing/)
+
+Runs entirely in your browser — no install, no upload, no account. Drop a Coros / Garmin / SpeedCoach `.fit` file and go.
 
 ## What it does
 
 - Parses FIT files directly in the browser (Coros, Garmin, SpeedCoach)
 - Auto-detects intervals from GPS speed and stroke rate data
-- Splits each piece into equal quarters (by distance or time)
+- Splits each piece into **custom segments** — presets (halves/quarters/fifths, or minute ladders like 4′/1′/1′) or your own labeled splits, by distance or time
 - Extracts first ~30 strokes (start sequence) and last ~30 strokes (finish sprint)
 - Calculates rest intervals between pieces
 - Charts pace, HR, and DPS across all pieces side by side
+- Exports a **1:1 session summary image** for sharing to Strava
 
 ## How to use
 
@@ -17,9 +22,9 @@
 2. Drop your `.fit` file onto the upload zone
 3. Set your workout parameters:
    - **Number of intervals** — how many pieces you did
-   - **Interval type** — distance (metres) or time (seconds)
-   - **Interval length** — e.g. 1000 for 1000m pieces, 300 for 5-minute pieces
-   - **Number of quarters** — 2, 4, or 5 equal segments per piece
+   - **Interval type** — distance (metres), time (seconds), or time (minutes)
+   - **Interval length** — e.g. 1000 for 1000m pieces, or 6 for 6-minute pieces
+   - **Segments** — pick a preset (equal halves/quarters/fifths, or a minute ladder like 4′/1′/1′) or build your own labeled splits; the running total must equal the piece length
 4. Click **Analyze Session**
 
 > ⚓ **Intervals are measured backwards from the end of each detected piece.** Set the interval length to match the distance or time you actually rowed, not including warmup or build-in strokes.
