@@ -486,18 +486,25 @@ function segStatsByDist(rows, tStart, tEnd, d0, d1) {
   return segStats(rows, seg[0].elapsed, seg[seg.length-1].elapsed);
 }
 
-// Detect pieces automatically: look for sustained fast rowing.
-// A brief sub-threshold dip (≤ GRACE seconds) does NOT end a piece — otherwise a
-// single slow stroke mid-piece splits one piece into two and the end is
-// registered early (see the P4 wind-down case). The window end is the last
-// genuinely-fast sample, not the slow sample that tripped the threshold.
+// Detect pieces automatically: sustained fast rowing.
+// - A brief sub-threshold dip (≤ GRACE s) does NOT end a piece — otherwise one
+//   slow stroke splits a piece and the end registers early (the P4 case). The
+//   window end is the last genuinely-fast sample.
+// - Among the fast windows, keep the N whose SIZE is closest to the prescribed
+//   interval length (seconds for time pieces, metres for distance), not the N
+//   longest — so a long warmup/steady block can't outrank the actual (often
+//   shorter) prescribed pieces and steal a slot (the 4×4′ warmup case).
 function detectPieces(rows, numPieces, intervalType, intervalLen) {
   const GRACE = 12;
+  const distAt = t => { const r = rows.find(x => x.elapsed >= t); return r ? r.dist_m : 0; };
   const fastWindows = [];
   let inFast = false, fastStart = 0, lastFast = 0;
   const flush = () => {
-    if (inFast && (lastFast - fastStart) > 30)
-      fastWindows.push({ start: fastStart, end: lastFast, dur: lastFast - fastStart });
+    if (inFast && (lastFast - fastStart) > 30) {
+      const size = intervalType === 'distance' ? (distAt(lastFast) - distAt(fastStart))
+                                               : (lastFast - fastStart);
+      fastWindows.push({ start: fastStart, end: lastFast, dur: lastFast - fastStart, size });
+    }
     inFast = false;
   };
   for (const r of rows) {
@@ -510,8 +517,8 @@ function detectPieces(rows, numPieces, intervalType, intervalLen) {
   }
   flush();
 
-  // Sort by duration descending, take top N, restore chronological order
-  fastWindows.sort((a,b) => b.dur - a.dur);
+  // Rank by closeness to the interval length, take the best N, restore time order
+  fastWindows.sort((a,b) => Math.abs(a.size - intervalLen) - Math.abs(b.size - intervalLen));
   return fastWindows.slice(0, numPieces).sort((a,b) => a.start - b.start);
 }
 
